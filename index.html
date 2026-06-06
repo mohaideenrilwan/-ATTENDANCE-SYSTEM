@@ -1,142 +1,370 @@
-/**
- * RFID Attendance — Google Apps Script
- * Columns: Timestamp | UID | Name | Grade | Status
- *
- * DEPLOY:
- * 1. Paste → Ctrl+S
- * 2. Run "setupSheet" once
- * 3. Run "testWrite" → verify row appears
- * 4. Deploy → New deployment → Web App
- *    Execute as: Me | Access: Anyone
- * 5. Copy URL → ESP32 SCRIPT_URL + dashboard
- */
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RFID Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#06080f;--s1:#0d1117;--s2:#111820;--s3:#162030;
+  --border:#1c2c3e;--accent:#00d4ff;--green:#00e5a0;
+  --red:#ff4d6d;--amber:#ffb830;--text:#dde6f0;--muted:#4a6075;
+  --font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;--display:'Bebas Neue',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh}
 
-var SHEET_NAME = "Attendance";
+/* scanline overlay */
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:999;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,212,255,.012) 2px,rgba(0,212,255,.012) 4px)}
 
-function doGet(e) {
+.wrap{max-width:1080px;margin:0 auto;padding:28px 20px 60px;position:relative;z-index:1}
+
+/* ── Header ── */
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:32px;flex-wrap:wrap;gap:16px}
+.logo{display:flex;align-items:center;gap:14px}
+.logo-icon{width:44px;height:44px;border:2px solid var(--accent);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:1.2rem;
+  box-shadow:0 0 18px rgba(0,212,255,.25)}
+.logo-text h1{font-family:var(--display);font-size:2rem;letter-spacing:.06em;
+  background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo-text p{font-size:.75rem;color:var(--muted);font-family:var(--mono);margin-top:1px}
+.header-right{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+
+/* ── Config ── */
+.config{background:var(--s1);border:1px solid var(--border);border-radius:10px;
+  padding:14px 18px;margin-bottom:24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.config label{font-size:.72rem;font-family:var(--mono);color:var(--muted);white-space:nowrap}
+.config input{flex:1;min-width:260px;background:var(--s2);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);font-family:var(--mono);font-size:.78rem;
+  padding:9px 13px;outline:none;transition:border-color .2s}
+.config input:focus{border-color:var(--accent)}
+.config input::placeholder{color:var(--muted)}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 18px;border-radius:7px;
+  font-family:var(--font);font-size:.82rem;font-weight:600;cursor:pointer;border:none;
+  transition:all .18s;white-space:nowrap;text-decoration:none}
+.btn-primary{background:var(--accent);color:#06080f}
+.btn-primary:hover{background:#33ddff;transform:translateY(-1px);box-shadow:0 4px 18px rgba(0,212,255,.3)}
+.btn-ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none!important}
+
+/* ── Progress bar ── */
+.prog-wrap{height:2px;background:var(--border);border-radius:2px;margin-bottom:22px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--green));
+  width:100%;transition:width linear}
+
+/* ── Stats ── */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+.stat{background:var(--s1);border:1px solid var(--border);border-radius:10px;
+  padding:18px 16px;position:relative;overflow:hidden;transition:transform .2s}
+.stat:hover{transform:translateY(-2px)}
+.stat::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+.stat.c-blue::before{background:var(--accent)}
+.stat.c-green::before{background:var(--green)}
+.stat.c-red::before{background:var(--red)}
+.stat.c-amber::before{background:var(--amber)}
+.stat-label{font-size:.68rem;font-family:var(--mono);text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.stat-val{font-family:var(--display);font-size:2.2rem;letter-spacing:.04em;margin-top:6px;line-height:1}
+.stat.c-blue .stat-val{color:var(--accent)}
+.stat.c-green .stat-val{color:var(--green)}
+.stat.c-red .stat-val{color:var(--red)}
+.stat.c-amber .stat-val{color:var(--amber)}
+
+/* ── Filters ── */
+.filters{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.search{flex:1;min-width:180px;background:var(--s1);border:1px solid var(--border);
+  border-radius:7px;color:var(--text);font-family:var(--mono);font-size:.82rem;
+  padding:9px 13px;outline:none;transition:border-color .2s}
+.search:focus{border-color:var(--accent)}
+.search::placeholder{color:var(--muted)}
+select.fsel{background:var(--s1);border:1px solid var(--border);border-radius:7px;
+  color:var(--text);font-family:var(--mono);font-size:.78rem;padding:9px 13px;
+  outline:none;cursor:pointer}
+select.fsel:focus{border-color:var(--accent)}
+
+/* ── Table card ── */
+.card{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.card-head{display:flex;justify-content:space-between;align-items:center;
+  padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px}
+.card-title{font-weight:600;font-size:.92rem}
+.rec-count{font-family:var(--mono);font-size:.72rem;color:var(--muted)}
+
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;padding:10px 16px;font-size:.67rem;font-family:var(--mono);
+  text-transform:uppercase;letter-spacing:.12em;color:var(--muted);
+  background:var(--s2);border-bottom:1px solid var(--border)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .12s;animation:rowIn .25s ease both}
+tbody tr:last-child{border-bottom:none}
+tbody tr:hover{background:var(--s2)}
+td{padding:12px 16px;font-size:.85rem;vertical-align:middle}
+.td-ts{font-family:var(--mono);font-size:.73rem;color:var(--muted);white-space:nowrap}
+.td-uid{font-family:var(--mono);font-size:.73rem;color:var(--accent)}
+.td-name{font-weight:600}
+.grade-pill{display:inline-block;font-family:var(--mono);font-size:.68rem;
+  padding:3px 9px;border-radius:20px;background:rgba(0,212,255,.1);color:var(--accent);border:1px solid rgba(0,212,255,.2)}
+.badge{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+  font-size:.72rem;font-weight:600;padding:4px 10px;border-radius:20px}
+.badge-ok{background:rgba(0,229,160,.1);color:var(--green);border:1px solid rgba(0,229,160,.2)}
+.badge-deny{background:rgba(255,77,109,.1);color:var(--red);border:1px solid rgba(255,77,109,.2)}
+.badge-dot{width:5px;height:5px;border-radius:50%}
+.badge-ok .badge-dot{background:var(--green)}
+.badge-deny .badge-dot{background:var(--red)}
+
+@keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:translateX(0)}}
+
+/* ── Empty ── */
+.empty{text-align:center;padding:56px 20px;color:var(--muted)}
+.empty .ico{font-size:2.2rem;margin-bottom:10px;opacity:.5}
+.empty p{font-size:.85rem}
+
+/* ── Spinner ── */
+.spin{display:inline-block;width:15px;height:15px;border:2px solid var(--border);
+  border-top-color:var(--accent);border-radius:50%;animation:rotate .65s linear infinite}
+@keyframes rotate{to{transform:rotate(360deg)}}
+
+/* ── Live indicator ── */
+.live{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;
+  font-family:var(--mono);color:var(--green)}
+.live::before{content:'';width:7px;height:7px;background:var(--green);border-radius:50%;
+  animation:pulse 1.4s ease infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(.6)}}
+
+/* ── Toast ── */
+#toast{position:fixed;bottom:22px;right:22px;background:var(--s1);border:1px solid var(--border);
+  border-radius:8px;padding:11px 16px;font-family:var(--mono);font-size:.8rem;
+  opacity:0;transform:translateY(10px);transition:all .25s;z-index:100;max-width:280px}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.ok{border-left:3px solid var(--green);color:var(--green)}
+#toast.err{border-left:3px solid var(--red);color:var(--red)}
+#toast.inf{border-left:3px solid var(--accent);color:var(--accent)}
+
+@media(max-width:580px){
+  thead th:nth-child(2),td:nth-child(2){display:none}
+  .stat-val{font-size:1.7rem}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="logo">
+      <div class="logo-icon">📡</div>
+      <div class="logo-text">
+        <h1>RFID ATTENDANCE</h1>
+        <p id="lastUpdated" style="font-family:var(--mono);font-size:.72rem;color:var(--muted)">Not loaded</p>
+      </div>
+    </div>
+    <div class="header-right">
+      <span class="live" id="liveDot" style="display:none">LIVE</span>
+      <button class="btn btn-ghost" id="autoBtn" onclick="toggleAuto()">⏱ Auto: OFF</button>
+      <button class="btn btn-ghost" onclick="exportCSV()">⬇ CSV</button>
+      <button class="btn btn-primary" id="loadBtn" onclick="loadData()">
+        <span id="loadIcon">↻</span> Load
+      </button>
+    </div>
+  </header>
+
+  <div class="config">
+    <label>SCRIPT URL</label>
+    <input id="urlInput" type="text" placeholder="https://script.google.com/macros/s/YOUR_ID/exec"/>
+    <button class="btn btn-primary" onclick="loadData()">Connect</button>
+  </div>
+
+  <div class="prog-wrap"><div class="prog-fill" id="progFill"></div></div>
+
+  <div class="stats">
+    <div class="stat c-blue"><div class="stat-label">Total</div><div class="stat-val" id="sTotal">—</div></div>
+    <div class="stat c-green"><div class="stat-label">Authorised</div><div class="stat-val" id="sAuth">—</div></div>
+    <div class="stat c-red"><div class="stat-label">Denied</div><div class="stat-val" id="sDeny">—</div></div>
+    <div class="stat c-amber"><div class="stat-label">Unique</div><div class="stat-val" id="sUniq">—</div></div>
+  </div>
+
+  <div class="filters">
+    <input class="search" id="searchBox" placeholder="🔍  Search name, UID, grade…" oninput="render()"/>
+    <select class="fsel" id="fStatus" onchange="render()">
+      <option value="">All Status</option>
+      <option>Authorised</option>
+      <option>Denied</option>
+    </select>
+    <select class="fsel" id="fGrade" onchange="render()">
+      <option value="">All Grades</option>
+    </select>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">Attendance Log</span>
+      <span class="rec-count" id="recCount">0 records</span>
+    </div>
+    <div id="tableWrap">
+      <div class="empty"><div class="ico">📡</div><p>Enter your Apps Script URL and click <strong>Connect</strong></p></div>
+    </div>
+  </div>
+
+</div>
+<div id="toast"></div>
+
+<script>
+let allData   = [];
+let autoOn    = false;
+let autoTimer = null;
+const AUTO_SEC = 5;
+
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby5yXY9eyHYl1Zh9bkkbPATi-cTAgWc_da_Sz2EWkj8KOyvcxVyy_Iw0sBBluUprvVeeQ/exec';
+
+window.onload = () => {
+  document.getElementById('urlInput').value = SCRIPT_URL;
+  loadData();
+  setTimeout(toggleAuto, 1500);
+};
+
+async function loadData() {
+  const url = SCRIPT_URL;
+  document.getElementById('urlInput').value = url;
+
+  const btn  = document.getElementById('loadBtn');
+  const icon = document.getElementById('loadIcon');
+  btn.disabled = true;
+  icon.innerHTML = '<span class="spin"></span>';
+
   try {
-    var p = (e && e.parameter) ? e.parameter : {};
-    if (p.action === "read") return readSheet();
-    return writeRow(p);
-  } catch(err) {
-    return jsonOut({ result:"error", msg: err.message });
+    const res  = await fetch(url + '?action=read');
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    allData = json.data || [];
+    updateStats();
+    fillGradeFilter();
+    render();
+    document.getElementById('lastUpdated').textContent =
+      'Updated ' + new Date().toLocaleTimeString();
+    toast('Loaded ' + allData.length + ' records', 'ok');
+  } catch(e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    icon.textContent = '↻';
   }
 }
 
-function doPost(e) {
-  try {
-    var p = {};
-    if (e && e.parameter) p = e.parameter;
-    if (e && e.postData && e.postData.contents) {
-      var pairs = e.postData.contents.split("&");
-      pairs.forEach(function(pair) {
-        var kv = pair.split("=");
-        if (kv.length === 2) p[kv[0]] = decodeURIComponent(kv[1].replace(/\+/g," "));
-      });
-    }
-    return writeRow(p);
-  } catch(err) {
-    return jsonOut({ result:"error", msg: err.message });
-  }
+function updateStats() {
+  document.getElementById('sTotal').textContent = allData.length;
+  document.getElementById('sAuth').textContent  = allData.filter(r=>r.status==='Authorised').length;
+  document.getElementById('sDeny').textContent  = allData.filter(r=>r.status==='Denied').length;
+  document.getElementById('sUniq').textContent  = new Set(allData.map(r=>r.uid)).size;
 }
 
-function writeRow(p) {
-  var uid    = clean(p.uid)    || "UNKNOWN";
-  var name   = clean(p.name)   || "UNKNOWN";
-  var grade  = clean(p.grade)  || "-";
-  var status = clean(p.status) || "UNKNOWN";
-
-  if (uid === "UNKNOWN" && name === "UNKNOWN") {
-    return jsonOut({ result:"ignored" });
-  }
-
-  Logger.log("WRITE uid=%s name=%s grade=%s status=%s", uid, name, grade, status);
-
-  var sheet = getOrCreateSheet();
-  var ts    = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss");
-
-  sheet.appendRow([ts, uid, name, grade, status]);
-  var row = sheet.getLastRow();
-
-  // Status colour (col 5)
-  var sc     = sheet.getRange(row, 5);
-  var isAuth = (status === "Authorised");
-  sc.setBackground(isAuth ? "#d9ead3" : "#fce5cd");
-  sc.setFontColor (isAuth ? "#274e13" : "#b45309");
-  sc.setFontWeight("bold");
-  sc.setHorizontalAlignment("center");
-
-  Logger.log("Row %s OK", row);
-  return jsonOut({ result:"success", row:row, ts:ts,
-    received:{ uid:uid, name:name, grade:grade, status:status } });
-}
-
-function readSheet() {
-  var ss    = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) return jsonOut({ data:[] });
-  var rows = sheet.getDataRange().getValues();
-  if (rows.length < 2) return jsonOut({ data:[] });
-  var keys = rows[0].map(function(h){ return String(h).toLowerCase().trim(); });
-  var data = rows.slice(1).map(function(row){
-    var obj = {};
-    keys.forEach(function(k,i){
-      var v = row[i];
-      obj[k] = (v instanceof Date)
-        ? Utilities.formatDate(v, Session.getScriptTimeZone(), "yyyy-MM-dd HH:mm:ss")
-        : String(v);
-    });
-    return obj;
+function fillGradeFilter() {
+  const sel = document.getElementById('fGrade');
+  const grades = [...new Set(allData.map(r=>r.grade).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">All Grades</option>';
+  grades.forEach(g => {
+    const o = document.createElement('option');
+    o.value = g; o.textContent = g; sel.appendChild(o);
   });
-  return jsonOut({ data:data });
 }
 
-function getOrCreateSheet() {
-  var ss    = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
-    var h = sheet.getRange(1,1,1,5);
-    h.setValues([["Timestamp","UID","Name","Grade","Status"]]);
-    h.setFontWeight("bold");
-    h.setBackground("#1D9E75");
-    h.setFontColor("#FFFFFF");
-    h.setHorizontalAlignment("center");
-    sheet.setFrozenRows(1);
-    sheet.setColumnWidth(1,175);
-    sheet.setColumnWidth(2,120);
-    sheet.setColumnWidth(3,130);
-    sheet.setColumnWidth(4,100);
-    sheet.setColumnWidth(5,115);
+function render() {
+  const q  = document.getElementById('searchBox').value.toLowerCase();
+  const fs = document.getElementById('fStatus').value;
+  const fg = document.getElementById('fGrade').value;
+
+  let rows = allData.filter(r => {
+    const ms = !q || [r.name,r.uid,r.grade].some(v=>(v||'').toLowerCase().includes(q));
+    const mst = !fs || r.status === fs;
+    const mg  = !fg || r.grade  === fg;
+    return ms && mst && mg;
+  }).slice().reverse();
+
+  document.getElementById('recCount').textContent = rows.length + ' records';
+
+  if (!rows.length) {
+    document.getElementById('tableWrap').innerHTML =
+      '<div class="empty"><div class="ico">🔍</div><p>No records match your filters.</p></div>';
+    return;
   }
-  return sheet;
+
+  const trs = rows.map((r,i) => `
+    <tr style="animation-delay:${Math.min(i*.025,.4)}s">
+      <td class="td-ts">${r.timestamp||'—'}</td>
+      <td class="td-uid">${r.uid||'—'}</td>
+      <td class="td-name">${r.name||'—'}</td>
+      <td><span class="grade-pill">${r.grade||'—'}</span></td>
+      <td><span class="badge ${r.status==='Authorised'?'badge-ok':'badge-deny'}">
+        <span class="badge-dot"></span>${r.status||'—'}
+      </span></td>
+    </tr>`).join('');
+
+  document.getElementById('tableWrap').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Timestamp</th><th>UID</th><th>Name</th><th>Grade</th><th>Status</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table>`;
 }
 
-function clean(val) {
-  if (val === null || val === undefined) return "";
-  var s = String(val).trim();
-  try { s = decodeURIComponent(s); } catch(e) {}
-  return s.replace(/\+/g," ").trim();
+function exportCSV() {
+  if (!allData.length) { toast('No data to export', 'err'); return; }
+  const hdr  = ['Timestamp','UID','Name','Grade','Status'];
+  const rows = allData.map(r =>
+    [r.timestamp,r.uid,r.name,r.grade,r.status]
+      .map(v=>`"${(v||'').replace(/"/g,'""')}"`)
+      .join(',')
+  );
+  const blob = new Blob([[hdr.join(','),...rows].join('\n')],{type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'attendance_'+new Date().toISOString().slice(0,10)+'.csv';
+  a.click();
+  toast('CSV exported', 'ok');
 }
 
-function jsonOut(obj) {
-  return ContentService
-    .createTextOutput(JSON.stringify(obj))
-    .setMimeType(ContentService.MimeType.JSON);
+function toggleAuto() {
+  autoOn = !autoOn;
+  const btn  = document.getElementById('autoBtn');
+  const live = document.getElementById('liveDot');
+  if (autoOn) {
+    btn.textContent = '⏱ Auto: ON';
+    btn.style.borderColor = 'var(--green)';
+    btn.style.color = 'var(--green)';
+    live.style.display = 'inline-flex';
+    startProgBar();
+    autoTimer = setInterval(() => { startProgBar(); loadData(); }, AUTO_SEC * 1000);
+  } else {
+    btn.textContent = '⏱ Auto: OFF';
+    btn.style.borderColor = '';
+    btn.style.color = '';
+    live.style.display = 'none';
+    clearInterval(autoTimer);
+    resetProgBar();
+  }
 }
 
-function setupSheet() {
-  getOrCreateSheet();
-  Logger.log("Sheet ready: " + SHEET_NAME);
+function startProgBar() {
+  const f = document.getElementById('progFill');
+  f.style.transition = 'none'; f.style.width = '100%';
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    f.style.transition = `width ${AUTO_SEC}s linear`;
+    f.style.width = '0%';
+  }));
 }
 
-function testWrite() {
-  Logger.log(writeRow({ uid:"73BA2325", name:"Rilwan", grade:"Grade-A", status:"Authorised" }).getContent());
+function resetProgBar() {
+  const f = document.getElementById('progFill');
+  f.style.transition = 'none'; f.style.width = '100%';
 }
-function testDenied() {
-  Logger.log(writeRow({ uid:"AABBCCDD", name:"Unknown", grade:"-", status:"Denied" }).getContent());
+
+function toast(msg, type='inf') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'show ' + type;
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.className = '', 3000);
 }
-function testRead() {
-  var r = JSON.parse(readSheet().getContent());
-  Logger.log("Rows: " + r.data.length);
-}
+</script>
+</body>
+</html>
