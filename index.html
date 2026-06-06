@@ -174,9 +174,32 @@ table{width:100%;border-collapse:collapse;min-width:520px}
   font-size:.68rem;
   font-family:var(--mono);
   color:var(--muted);
-  padding:6px 0 10px;
+  padding:6px 0 4px;
   letter-spacing:.08em;
 }
+/* ── Scroll buttons ── */
+.scroll-btns{
+  display:none;
+  justify-content:space-between;
+  align-items:center;
+  padding:0 10px 10px;
+  gap:8px;
+}
+.scroll-btn{
+  flex:1;
+  background:var(--s2);
+  border:1px solid var(--border);
+  border-radius:8px;
+  color:var(--text);
+  font-size:1rem;
+  padding:8px 0;
+  cursor:pointer;
+  transition:background .15s,border-color .15s;
+  text-align:center;
+  user-select:none;
+  -webkit-tap-highlight-color:transparent;
+}
+.scroll-btn:active{background:var(--s3);border-color:var(--accent);color:var(--accent)}
 
 @media(max-width:700px){
   .wrap{padding:16px 12px 60px}
@@ -188,6 +211,7 @@ table{width:100%;border-collapse:collapse;min-width:520px}
   .logo-text h1{font-size:1.6rem}
   .btn{padding:8px 13px;font-size:.78rem}
   .scroll-hint{display:block}
+  .scroll-btns{display:flex}
   .card-head{padding:12px 14px}
   thead th{padding:8px 12px;font-size:.62rem}
   td{padding:10px 12px;font-size:.8rem}
@@ -256,6 +280,10 @@ table{width:100%;border-collapse:collapse;min-width:520px}
       <span class="rec-count" id="recCount">0 records</span>
     </div>
     <p class="scroll-hint">← Swipe to scroll →</p>
+    <div class="scroll-btns">
+      <button class="scroll-btn" onclick="scrollTable(-160)" title="Scroll left">◀ Left</button>
+      <button class="scroll-btn" onclick="scrollTable(160)" title="Scroll right">Right ▶</button>
+    </div>
     <div class="table-scroll-wrap" id="scrollWrap">
       <div class="table-scroll" id="tableScroll">
         <div id="tableWrap">
@@ -432,6 +460,11 @@ function toast(msg, type='inf') {
   t.textContent = msg; t.className = 'show ' + type;
   clearTimeout(t._t);
   t._t = setTimeout(() => t.className = '', 3000);
+}
+
+function scrollTable(px) {
+  const el = document.getElementById('tableScroll');
+  if (el) el.scrollBy({ left: px, behavior: 'smooth' });
 }
 </script>
 </body>
