@@ -142,9 +142,63 @@ td{padding:12px 16px;font-size:.85rem;vertical-align:middle}
 #toast.err{border-left:3px solid var(--red);color:var(--red)}
 #toast.inf{border-left:3px solid var(--accent);color:var(--accent)}
 
-@media(max-width:580px){
-  thead th:nth-child(2),td:nth-child(2){display:none}
+/* ── Table scroll wrapper ── */
+.table-scroll{
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;  /* smooth iOS scroll */
+  scroll-snap-type:x proximity;
+}
+/* Scroll hint shadow on right edge when content overflows */
+.table-scroll-wrap{
+  position:relative;
+  border-radius:0 0 12px 12px;
+  overflow:hidden;
+}
+.table-scroll-wrap::after{
+  content:'';
+  position:absolute;
+  top:0;right:0;bottom:0;
+  width:32px;
+  background:linear-gradient(to right,transparent,rgba(6,8,15,.7));
+  pointer-events:none;
+  border-radius:0 0 12px 0;
+  opacity:0;
+  transition:opacity .3s;
+}
+.table-scroll-wrap.can-scroll::after{opacity:1}
+
+table{width:100%;border-collapse:collapse;min-width:520px}
+.scroll-hint{
+  display:none;
+  text-align:center;
+  font-size:.68rem;
+  font-family:var(--mono);
+  color:var(--muted);
+  padding:6px 0 10px;
+  letter-spacing:.08em;
+}
+
+@media(max-width:700px){
+  .wrap{padding:16px 12px 60px}
   .stat-val{font-size:1.7rem}
+  .stats{grid-template-columns:repeat(2,1fr);gap:10px}
+  .filters{gap:8px}
+  .search{font-size:.78rem}
+  header{margin-bottom:20px}
+  .logo-text h1{font-size:1.6rem}
+  .btn{padding:8px 13px;font-size:.78rem}
+  .scroll-hint{display:block}
+  .card-head{padding:12px 14px}
+  thead th{padding:8px 12px;font-size:.62rem}
+  td{padding:10px 12px;font-size:.8rem}
+  .td-ts{font-size:.68rem}
+  .td-uid{font-size:.68rem}
+}
+
+@media(max-width:400px){
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .header-right{gap:6px}
+  .btn{padding:7px 10px;font-size:.74rem}
 }
 </style>
 </head>
@@ -201,8 +255,13 @@ td{padding:12px 16px;font-size:.85rem;vertical-align:middle}
       <span class="card-title">Attendance Log</span>
       <span class="rec-count" id="recCount">0 records</span>
     </div>
-    <div id="tableWrap">
-      <div class="empty"><div class="ico">📡</div><p>Enter your Apps Script URL and click <strong>Connect</strong></p></div>
+    <p class="scroll-hint">← Swipe to scroll →</p>
+    <div class="table-scroll-wrap" id="scrollWrap">
+      <div class="table-scroll" id="tableScroll">
+        <div id="tableWrap">
+          <div class="empty"><div class="ico">📡</div><p>Auto-connecting…</p></div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -306,6 +365,15 @@ function render() {
       </tr></thead>
       <tbody>${trs}</tbody>
     </table>`;
+
+  // Show shadow hint if table overflows horizontally
+  requestAnimationFrame(() => {
+    const wrap  = document.getElementById('tableScroll');
+    const outer = document.getElementById('scrollWrap');
+    if (wrap && outer) {
+      outer.classList.toggle('can-scroll', wrap.scrollWidth > wrap.clientWidth);
+    }
+  });
 }
 
 function exportCSV() {
